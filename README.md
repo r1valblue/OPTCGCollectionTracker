@@ -2,7 +2,7 @@
 
 A free, open-source collection tracker for the One Piece Trading Card Game. Works in any browser, installs as a home screen app on iPhone and Android.
 
-**[▶ Open the app](https://r1valblue.github.io/OPTCGCollectionTracker/)**
+**[▶ Open the app](https://r1valblue.github.io/OPTCGCollectionTracker/index.html)**
 
 ---
 
