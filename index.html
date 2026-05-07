@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OP TCG Tracker</title>
+<style>
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap');
+
+/* ── CSS Variables ── */
+:root {
+  --bg:        #0d0d0f;
+  --surface:   #16161a;
+  --surface2:  #1e1e24;
+  --surface3:  #26262e;
+  --border:    #2e2e38;
+  --accent:    #e8c547;        /* gold */
+  --accent2:   #c0392b;        /* red */
+  --text:      #e8e8ec;
+  --text2:     #9090a0;
+  --text3:     #58586a;
+  --green:     #27ae60;
+  --yellow:    #f1c40f;
+  --blue:      #2980b9;
+  --radius:    8px;
+  --radius-lg: 14px;
+  --shadow:    0 4px 24px rgba(0,0,0,0.5);
+  --font:      'Barlow', sans-serif;
+  --font-cond: 'Barlow Condensed', sans-serif;
+  --font-deco: 'Pirata One', cursive;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; }
+a { color: var(--accent); text-decoration: none; }
+button { cursor: pointer; font-family: var(--font); border: none; background: none; }
+input, select, textarea { font-family: var(--font); }
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── Header ── */
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; z-index: 10;
+}
+header h1 {
+  font-family: var(--font-deco); font-size: 1.5rem; color: var(--accent);
+  letter-spacing: .5px; white-space: nowrap;
+}
+header h1 span { color: var(--text2); font-size: 1rem; }
+.header-spacer { flex: 1; }
+#save-btn {
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text2); border-radius: var(--radius); padding: 6px 14px;
+  font-size: .85rem; font-weight: 600; transition: all .2s;
+}
+#save-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Nav tabs ── */
+nav {
+  display: flex; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+nav::-webkit-scrollbar { display: none; }
+.nav-tab {
+  padding: 10px 16px; font-size: .85rem; font-weight: 600;
+  color: var(--text2); border-bottom: 2px solid transparent;
+  white-space: nowrap; transition: all .15s; letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Pages ── */
+.page { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+.page.active { display: flex; }
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.toolbar select, .toolbar input[type=text] {
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 6px 10px;
+  font-size: .85rem; outline: none; transition: border-color .2s;
+}
+.toolbar select:focus, .toolbar input[type=text]:focus { border-color: var(--accent); }
+.toolbar-spacer { flex: 1; }
+.stats-pill {
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text2); border-radius: 20px; padding: 4px 12px; font-size: .8rem;
+}
+.stats-pill b { color: var(--accent); }
+
+/* ── Card grid ── */
+.card-grid-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .card-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+}
+.card-thumb {
+  position: relative; border-radius: var(--radius); overflow: hidden;
+  cursor: pointer; border: 2px solid transparent; transition: all .2s;
+  aspect-ratio: 421/600; background: var(--surface2);
+}
+.card-thumb:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+.card-thumb img {
+  width: 100%; height: 100%; object-fit: cover;
+  display: block; transition: opacity .3s;
+}
+.card-thumb img.loading { opacity: 0; }
+.card-thumb.owned  { border-color: var(--green); }
+.card-thumb.wanted { border-color: var(--yellow); }
+.card-thumb .qty-badge {
+  position: absolute; bottom: 4px; right: 4px;
+  background: rgba(0,0,0,.8); color: var(--green);
+  font-size: .7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  display: none;
+}
+.card-thumb.owned .qty-badge { display: block; }
+.card-thumb .want-badge {
+  position: absolute; top: 4px; right: 4px;
+  background: var(--yellow); color: #000;
+  font-size: .65rem; font-weight: 800; padding: 1px 5px; border-radius: 4px;
+  display: none;
+}
+.card-thumb.wanted .want-badge { display: block; }
+.card-id-label {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,.85));
+  color: var(--text2); font-size: .65rem; padding: 10px 4px 3px;
+  text-align: center; font-family: var(--font-cond);
+}
+
+/* ── Loading / empty states ── */
+.loading-state, .empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; flex: 1;
+  color: var(--text3); font-size: 1.1rem;
+}
+.loading-state { animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+.empty-state .icon { font-size: 3rem; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75);
+  z-index: 100; display: flex; align-items: flex-start; justify-content: center;
+  padding: 20px; overflow-y: auto; opacity: 0; pointer-events: none;
+  transition: opacity .2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); width: 100%; max-width: 640px;
+  transform: translateY(20px); transition: transform .2s;
+  overflow: hidden; margin: auto;
+}
+.modal-overlay.open .modal { transform: translateY(0); }
+.modal-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { flex: 1; font-size: 1.1rem; font-family: var(--font-cond); font-weight: 700; }
+.modal-close {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--surface3); color: var(--text2); font-size: 1.2rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+}
+.modal-close:hover { background: var(--accent2); color: #fff; }
+.modal-body { padding: 16px; display: flex; gap: 16px; flex-wrap: wrap; }
+.modal-img-wrap {
+  flex-shrink: 0; width: 200px; border-radius: var(--radius); overflow: hidden;
+  background: var(--surface2);
+}
+.modal-img-wrap img { width: 100%; display: block; }
+.modal-info { flex: 1; min-width: 200px; }
+.modal-name { font-family: var(--font-deco); font-size: 1.4rem; color: var(--accent); margin-bottom: 4px; }
+.modal-id { color: var(--text3); font-size: .8rem; font-family: var(--font-cond); margin-bottom: 12px; }
+.stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 12px;
+}
+.stat-row { display: flex; flex-direction: column; }
+.stat-label { font-size: .7rem; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+.stat-value { font-size: .9rem; font-weight: 600; }
+.effect-box {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px;
+  font-size: .85rem; line-height: 1.5; color: var(--text2);
+  margin-bottom: 12px;
+}
+.trigger-box {
+  background: var(--surface3); border: 1px solid var(--accent2);
+  border-radius: var(--radius); padding: 8px 12px;
+  font-size: .82rem; color: var(--text2); margin-bottom: 12px;
+}
+.trigger-box strong { color: var(--accent2); }
+
+/* ── Variants section ── */
+.variants-section { width: 100%; }
+.variants-section h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); margin-bottom: 8px; }
+.variant-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.variant-row:last-child { border-bottom: none; }
+.variant-thumb { width: 48px; border-radius: 4px; overflow: hidden; background: var(--surface2); }
+.variant-thumb img { width: 100%; display: block; }
+.variant-label { flex: 1; font-size: .88rem; color: var(--text2); }
+.qty-ctrl { display: flex; align-items: center; gap: 6px; }
+.qty-btn {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text); font-size: 1rem; display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.qty-btn:hover { border-color: var(--accent); color: var(--accent); }
+.qty-display {
+  min-width: 24px; text-align: center; font-weight: 700; font-size: .95rem;
+}
+.want-btn {
+  padding: 4px 10px; border-radius: var(--radius);
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text2); font-size: .75rem; font-weight: 700;
+  transition: all .15s;
+}
+.want-btn.active { background: rgba(241,196,15,.15); border-color: var(--yellow); color: var(--yellow); }
+.want-btn:hover:not(.active) { border-color: var(--yellow); color: var(--yellow); }
+
+/* ── Modal links ── */
+.modal-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.ext-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); color: var(--text2);
+  font-size: .8rem; font-weight: 600; background: var(--surface2);
+  transition: all .2s;
+}
+.ext-link:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Search page ── */
+.search-form {
+  padding: 14px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
+}
+.search-form label { display: flex; flex-direction: column; gap: 4px; font-size: .78rem; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+.search-form input, .search-form select {
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 6px 10px;
+  font-size: .85rem; outline: none; transition: border-color .2s;
+}
+.search-form input:focus, .search-form select:focus { border-color: var(--accent); }
+.search-actions { grid-column: 1/-1; display: flex; gap: 8px; }
+.btn {
+  padding: 8px 18px; border-radius: var(--radius); font-weight: 700;
+  font-size: .85rem; transition: all .2s; letter-spacing: .3px;
+}
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { background: #f0d060; }
+.btn-ghost { background: var(--surface3); border: 1px solid var(--border); color: var(--text2); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Collection / Wantlist page ── */
+.list-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+.list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 200px; color: var(--text3); }
+.collection-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  margin-bottom: 6px; transition: border-color .2s;
+}
+.collection-item:hover { border-color: var(--border); }
+.collection-item .ci-img { width: 44px; border-radius: 4px; overflow: hidden; background: var(--surface2); flex-shrink: 0; }
+.collection-item .ci-img img { width: 100%; display: block; }
+.collection-item .ci-info { flex: 1; min-width: 0; }
+.collection-item .ci-name { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collection-item .ci-meta { color: var(--text3); font-size: .75rem; font-family: var(--font-cond); }
+
+/* ── Decklist page ── */
+.deck-header { padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.deck-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.deck-title-input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 6px 12px;
+  font-size: 1rem; font-weight: 700; outline: none; flex: 1;
+  transition: border-color .2s;
+}
+.deck-title-input:focus { border-color: var(--accent); }
+.deck-progress {
+  height: 6px; background: var(--surface3); border-radius: 3px; overflow: hidden; margin-bottom: 6px;
+}
+.deck-progress-bar {
+  height: 100%; background: var(--accent); border-radius: 3px;
+  transition: width .3s; width: 0%;
+}
+.deck-count { font-size: .8rem; color: var(--text2); font-family: var(--font-cond); }
+.deck-count span { color: var(--accent); font-weight: 700; }
+.deck-add-row { display: flex; gap: 8px; }
+.deck-add-input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 6px 12px;
+  font-size: .9rem; outline: none; transition: border-color .2s;
+}
+.deck-add-input:focus { border-color: var(--accent); }
+.deck-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+  font-size: .88rem;
+}
+.deck-item .di-qty {
+  min-width: 28px; text-align: center; font-weight: 700; color: var(--accent);
+  font-family: var(--font-cond); font-size: 1rem;
+}
+.deck-item .di-name { flex: 1; }
+.deck-item .di-id { color: var(--text3); font-size: .78rem; font-family: var(--font-cond); }
+.deck-item.not-owned .di-name { color: var(--text2); }
+.deck-item.not-owned::after {
+  content: "missing"; font-size: .65rem; color: var(--accent2);
+  font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+}
+.deck-item .di-del {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text3); font-size: .85rem; display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.deck-item .di-del:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+/* ── Groups page ── */
+.groups-sidebar {
+  width: 200px; flex-shrink: 0; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.groups-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.groups-layout { display: flex; flex: 1; overflow: hidden; }
+.group-list { flex: 1; overflow-y: auto; padding: 8px; }
+.group-item {
+  padding: 8px 10px; border-radius: var(--radius); cursor: pointer;
+  color: var(--text2); font-size: .88rem; font-weight: 600;
+  transition: all .15s; margin-bottom: 2px;
+}
+.group-item:hover { background: var(--surface2); color: var(--text); }
+.group-item.active { background: rgba(232,197,71,.12); color: var(--accent); }
+.group-item .gi-count { float: right; color: var(--text3); font-weight: 400; font-size: .8rem; }
+.new-group-row { padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+.new-group-input {
+  flex: 1; background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 5px 8px;
+  font-size: .82rem; outline: none;
+}
+
+/* ── OCR / Scan ── */
+.scan-page { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+.scan-area {
+  width: 100%; max-width: 400px; aspect-ratio: 1;
+  border: 2px dashed var(--border); border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; color: var(--text3); font-size: .9rem; text-align: center;
+  cursor: pointer; transition: all .2s;
+}
+.scan-area:hover { border-color: var(--accent); color: var(--text); }
+.scan-area.scanning { border-color: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.scan-icon { font-size: 3rem; }
+.scan-preview { max-width: 300px; border-radius: var(--radius); overflow: hidden; }
+.scan-preview img { width: 100%; display: block; }
+.scan-result {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px; text-align: center; max-width: 400px; width: 100%;
+}
+.manual-entry { display: flex; gap: 8px; max-width: 400px; width: 100%; }
+.manual-entry input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 8px 12px;
+  font-size: .95rem; outline: none; text-transform: uppercase; letter-spacing: 1px;
+  font-family: var(--font-cond);
+}
+.manual-entry input:focus { border-color: var(--accent); }
+
+/* ── Save/Load page ── */
+.save-page { flex: 1; overflow-y: auto; padding: 20px; max-width: 640px; margin: 0 auto; }
+.save-page h2 { font-family: var(--font-deco); color: var(--accent); font-size: 1.3rem; margin-bottom: 16px; }
+.save-section { margin-bottom: 24px; }
+.save-section h3 { font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); margin-bottom: 10px; }
+.save-section p { color: var(--text2); font-size: .88rem; line-height: 1.5; margin-bottom: 10px; }
+.file-drop {
+  border: 2px dashed var(--border); border-radius: var(--radius-lg);
+  padding: 32px; text-align: center; color: var(--text3);
+  cursor: pointer; transition: all .2s;
+}
+.file-drop:hover { border-color: var(--accent); color: var(--text); }
+.file-drop input { display: none; }
+.wantlist-export textarea {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius); padding: 10px;
+  font-family: monospace; font-size: .78rem; resize: vertical; min-height: 120px;
+  outline: none;
+}
+
+/* ── Disclaimer ── */
+.disclaimer {
+  padding: 8px 14px; background: var(--surface); border-top: 1px solid var(--border);
+  color: var(--text3); font-size: .7rem; text-align: center; line-height: 1.4;
+  flex-shrink: 0;
+}
+
+/* ── Color pills ── */
+.color-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: .72rem; font-weight: 700; font-family: var(--font-cond);
+  letter-spacing: .5px;
+}
+.color-Red    { background: rgba(192,57,43,.25); color: #e74c3c; border: 1px solid rgba(192,57,43,.4); }
+.color-Blue   { background: rgba(41,128,185,.25); color: #3498db; border: 1px solid rgba(41,128,185,.4); }
+.color-Green  { background: rgba(39,174,96,.25); color: #2ecc71; border: 1px solid rgba(39,174,96,.4); }
+.color-Yellow { background: rgba(241,196,15,.25); color: #f1c40f; border: 1px solid rgba(241,196,15,.4); }
+.color-Purple { background: rgba(142,68,173,.25); color: #9b59b6; border: 1px solid rgba(142,68,173,.4); }
+.color-Black  { background: rgba(120,120,130,.2); color: #aaa; border: 1px solid rgba(120,120,130,.3); }
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
+  background: var(--surface3); border: 1px solid var(--border);
+  color: var(--text); padding: 10px 20px; border-radius: var(--radius);
+  font-size: .88rem; font-weight: 600; z-index: 200;
+  transition: transform .3s, opacity .3s; opacity: 0;
+  box-shadow: var(--shadow);
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <h1>☠ OP TCG <span>Tracker</span></h1>
+    <div class="header-spacer"></div>
+    <button class="btn btn-ghost" id="scan-nav-btn" style="font-size:.8rem;padding:5px 12px">📷 Scan</button>
+    <button id="save-btn">💾 Save CSV</button>
+  </header>
+
+  <!-- Nav -->
+  <nav id="main-nav">
+    <button class="nav-tab active" data-page="browse">Browse</button>
+    <button class="nav-tab" data-page="search">Search</button>
+    <button class="nav-tab" data-page="collection">Collection</button>
+    <button class="nav-tab" data-page="wantlist">Wantlist</button>
+    <button class="nav-tab" data-page="decks">Decks</button>
+    <button class="nav-tab" data-page="groups">Groups</button>
+    <button class="nav-tab" data-page="scan">Scan</button>
+    <button class="nav-tab" data-page="saveload">Save/Load</button>
+  </nav>
+
+  <!-- ═══════════════ BROWSE PAGE ═══════════════ -->
+  <section class="page active" id="page-browse">
+    <div class="toolbar">
+      <select id="set-select"><option value="">Loading sets…</option></select>
+      <select id="filter-owned">
+        <option value="">All cards</option>
+        <option value="owned">Owned only</option>
+        <option value="wanted">Wanted only</option>
+        <option value="missing">Not owned</option>
+      </select>
+      <div class="toolbar-spacer"></div>
+      <div class="stats-pill" id="browse-stats">–</div>
+    </div>
+    <div class="card-grid-wrap" id="browse-grid-wrap">
+      <div class="loading-state" id="browse-loading">Loading card database…</div>
+      <div class="card-grid" id="card-grid" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SEARCH PAGE ═══════════════ -->
+  <section class="page" id="page-search">
+    <div class="search-form" id="search-form">
+      <label>Name / effect
+        <input type="text" id="s-text" placeholder="e.g. Zoro, DON!!">
+      </label>
+      <label>Color
+        <select id="s-color">
+          <option value="">Any</option>
+          <option>Red</option><option>Blue</option><option>Green</option>
+          <option>Yellow</option><option>Purple</option><option>Black</option>
+          <option>Multi</option>
+        </select>
+      </label>
+      <label>Type
+        <select id="s-type">
+          <option value="">Any</option>
+          <option>Leader</option><option>Character</option>
+          <option>Event</option><option>Stage</option>
+        </select>
+      </label>
+      <label>Attribute
+        <select id="s-attr">
+          <option value="">Any</option>
+          <option>Slash</option><option>Strike</option>
+          <option>Special</option><option>Ranged</option><option>Wisdom</option>
+        </select>
+      </label>
+      <label>Subtype contains
+        <input type="text" id="s-subtype" placeholder="e.g. Whitebeard">
+      </label>
+      <label>Cost (min)
+        <input type="number" id="s-cost-min" min="0" max="10" placeholder="0">
+      </label>
+      <label>Cost (max)
+        <input type="number" id="s-cost-max" min="0" max="10" placeholder="10">
+      </label>
+      <label>Power (min)
+        <input type="number" id="s-pow-min" min="0" placeholder="0" step="1000">
+      </label>
+      <div class="search-actions">
+        <button class="btn btn-primary" id="search-btn">Search</button>
+        <button class="btn btn-ghost" id="search-clear">Clear</button>
+      </div>
+    </div>
+    <div class="card-grid-wrap">
+      <div class="empty-state" id="search-empty"><div class="icon">🔍</div><div>Enter search criteria above</div></div>
+      <div class="card-grid" id="search-grid" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ COLLECTION PAGE ═══════════════ -->
+  <section class="page" id="page-collection">
+    <div class="toolbar">
+      <input type="text" id="coll-search" placeholder="Filter collection…" style="flex:1;max-width:300px">
+      <div class="toolbar-spacer"></div>
+      <div class="stats-pill" id="coll-stats">0 cards</div>
+    </div>
+    <div class="list-wrap" id="coll-list"></div>
+  </section>
+
+  <!-- ═══════════════ WANTLIST PAGE ═══════════════ -->
+  <section class="page" id="page-wantlist">
+    <div class="toolbar">
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-ghost" id="export-wantlist-btn" style="font-size:.8rem;padding:5px 12px">Export for Cardmarket</button>
+    </div>
+    <div class="list-wrap" id="want-list"></div>
+  </section>
+
+  <!-- ═══════════════ DECKS PAGE ═══════════════ -->
+  <section class="page" id="page-decks" style="flex-direction:row">
+    <!-- Sidebar: deck list -->
+    <div class="groups-sidebar">
+      <div style="padding:8px;border-bottom:1px solid var(--border);font-size:.75rem;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Decks</div>
+      <div class="group-list" id="deck-list-sidebar"></div>
+      <div class="new-group-row">
+        <input class="new-group-input" id="new-deck-input" placeholder="New deck…">
+        <button class="btn btn-primary" id="new-deck-btn" style="padding:5px 10px;font-size:.8rem">+</button>
+      </div>
+    </div>
+    <!-- Main: deck editor -->
+    <div class="groups-main" id="deck-editor" style="display:none">
+      <div class="deck-header">
+        <div class="deck-title-row">
+          <input class="deck-title-input" id="deck-title-input" placeholder="Deck name">
+          <button class="btn btn-ghost" id="del-deck-btn" style="font-size:.8rem;padding:5px 10px;color:var(--accent2)">Delete</button>
+        </div>
+        <div class="deck-progress"><div class="deck-progress-bar" id="deck-progress-bar"></div></div>
+        <div class="deck-count" id="deck-count">0 / 51 cards — <span id="deck-leader-count">0</span> leader</div>
+        <div class="deck-add-row">
+          <input class="deck-add-input" id="deck-card-input" placeholder="Card ID (e.g. OP01-001) or name…">
+          <button class="btn btn-primary" id="deck-add-btn" style="padding:5px 14px">Add</button>
+        </div>
+      </div>
+      <div class="list-wrap" id="deck-cards-list"></div>
+    </div>
+    <div class="groups-main" id="deck-empty-state" style="align-items:center;justify-content:center;color:var(--text3)">
+      Select or create a deck
+    </div>
+  </section>
+
+  <!-- ═══════════════ GROUPS PAGE ═══════════════ -->
+  <section class="page" id="page-groups" style="flex-direction:row">
+    <div class="groups-sidebar">
+      <div style="padding:8px;border-bottom:1px solid var(--border);font-size:.75rem;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Groups</div>
+      <div class="group-list" id="group-list-sidebar"></div>
+      <div class="new-group-row">
+        <input class="new-group-input" id="new-group-input" placeholder="New group…">
+        <button class="btn btn-primary" id="new-group-btn" style="padding:5px 10px;font-size:.8rem">+</button>
+      </div>
+    </div>
+    <div class="groups-main" id="group-editor" style="display:none;flex-direction:column">
+      <div class="toolbar">
+        <input type="text" id="group-search-input" placeholder="Add card to group…" style="flex:1;max-width:300px">
+        <button class="btn btn-primary" id="group-add-btn" style="padding:5px 14px">Add</button>
+        <div class="toolbar-spacer"></div>
+        <button class="btn btn-ghost" id="del-group-btn" style="font-size:.8rem;padding:5px 10px;color:var(--accent2)">Delete group</button>
+      </div>
+      <div class="list-wrap" id="group-cards-list"></div>
+    </div>
+    <div class="groups-main" id="group-empty-state" style="align-items:center;justify-content:center;color:var(--text3)">
+      Select or create a group
+    </div>
+  </section>
+
+  <!-- ═══════════════ SCAN PAGE ═══════════════ -->
+  <section class="page" id="page-scan">
+    <div class="scan-page">
+      <div class="scan-area" id="scan-drop-area">
+        <div class="scan-icon">📷</div>
+        <div>Tap to take photo or upload card image</div>
+        <div style="font-size:.75rem;color:var(--text3)">OCR reads the card ID from the bottom-right corner</div>
+        <input type="file" id="scan-input" accept="image/*" capture="environment" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+      </div>
+      <div class="scan-preview" id="scan-preview" style="display:none">
+        <img id="scan-preview-img" alt="">
+      </div>
+      <div class="scan-result" id="scan-result" style="display:none"></div>
+      <div style="color:var(--text3);font-size:.8rem">— or enter manually —</div>
+      <div class="manual-entry">
+        <input type="text" id="manual-id-input" placeholder="e.g. OP01-001" maxlength="20">
+        <button class="btn btn-primary" id="manual-add-btn">Add</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SAVE / LOAD PAGE ═══════════════ -->
+  <section class="page" id="page-saveload">
+    <div class="save-page">
+      <h2>Save &amp; Load</h2>
+
+      <div class="save-section">
+        <h3>Auto-save</h3>
+        <p>Your collection is saved automatically to a CSV file when you leave the page or press the Save button in the header.</p>
+        <button class="btn btn-primary" id="manual-save-btn">Download CSV now</button>
+      </div>
+
+      <div class="save-section">
+        <h3>Load from CSV</h3>
+        <p>Select a previously saved CSV file to restore your collection, wantlist, decks, and groups.</p>
+        <label class="file-drop">
+          <input type="file" id="load-csv-input" accept=".csv">
+          <div>📂 Click to select CSV file</div>
+          <div style="font-size:.78rem;color:var(--text3);margin-top:6px">collection_backup.csv</div>
+        </label>
+      </div>
+
+      <div class="save-section wantlist-export">
+        <h3>Cardmarket Wantlist Export</h3>
+        <p>Copy this text and paste it into Cardmarket's wantlist import field.</p>
+        <textarea id="cm-export-area" readonly placeholder="Your wantlist will appear here…"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-ghost" id="cm-copy-btn">Copy to clipboard</button>
+          <button class="btn btn-ghost" id="cm-refresh-btn">Refresh</button>
+        </div>
+      </div>
+
+      <div class="save-section">
+        <h3>Reset</h3>
+        <p style="color:var(--accent2)">⚠ This will clear all collection, wantlist, deck, and group data. It cannot be undone.</p>
+        <button class="btn btn-ghost" id="reset-btn" style="color:var(--accent2);border-color:var(--accent2)">Reset all data</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ DISCLAIMER ═══════════════ -->
+  <div class="disclaimer">
+    Card images and text are copyright Eiichiro Oda/Shueisha, Toei Animation and/or Bandai.
+    This project is not produced by, endorsed by, supported by, or affiliated with any of those copyright holders.
+    For personal, non-commercial use only.
+  </div>
+
+</div><!-- #app -->
+
+<!-- ═══════════════ CARD DETAIL MODAL ═══════════════ -->
+<div class="modal-overlay" id="card-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Card detail</h2>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ TOAST ═══════════════ -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let CARDS = [];            // full card database from cards.json
+let SETS  = [];            // [{code, name}]
+
+// collection[variantId] = quantity (integer ≥ 0)
+// wantlist[variantId]   = true/false
+// decks = [{id, name, cards:[{id,qty}]}]
+// groups = [{id, name, cards:[id]}]
+let collection = {};
+let wantlist   = {};
+let decks      = [];
+let groups     = [];
+
+let activeDeckId  = null;
+let activeGroupId = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+async function init() {
+  loadFromStorage();
+  await loadCards();
+  buildSetSelector();
+  renderBrowse();
+  renderCollection();
+  renderWantlist();
+  renderDeckSidebar();
+  renderGroupSidebar();
+  bindEvents();
+  refreshCmExport();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOAD CARDS.JSON
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadCards() {
+  const loading = document.getElementById('browse-loading');
+  try {
+    const res = await fetch('cards.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    CARDS = await res.json();
+
+    // Build set list preserving order of first appearance
+    const seen = new Set();
+    SETS = [];
+    for (const c of CARDS) {
+      if (!seen.has(c.set)) {
+        seen.add(c.set);
+        SETS.push({ code: c.set, name: c.setName || c.set });
+      }
+    }
+    loading.style.display = 'none';
+    document.getElementById('card-grid').style.display = '';
+  } catch (e) {
+    loading.textContent = `⚠ Could not load cards.json — ${e.message}`;
+    console.error(e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SET SELECTOR
+// ─────────────────────────────────────────────────────────────────────────────
+function buildSetSelector() {
+  const sel = document.getElementById('set-select');
+  sel.innerHTML = '<option value="">All sets</option>' +
+    SETS.map(s => `<option value="${s.code}">${s.code} — ${s.name}</option>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BROWSE
+// ─────────────────────────────────────────────────────────────────────────────
+function getVisibleCards() {
+  const setCode  = document.getElementById('set-select').value;
+  const ownFilter = document.getElementById('filter-owned').value;
+
+  let cards = CARDS.filter(c => !c.variant); // base prints only in grid
+
+  if (setCode) cards = cards.filter(c => c.set === setCode);
+
+  if (ownFilter === 'owned')   cards = cards.filter(c => (collection[c.id] || 0) > 0);
+  if (ownFilter === 'wanted')  cards = cards.filter(c => wantlist[c.id]);
+  if (ownFilter === 'missing') cards = cards.filter(c => !(collection[c.id] > 0));
+
+  return cards;
+}
+
+function renderBrowse() {
+  const grid = document.getElementById('card-grid');
+  const stats = document.getElementById('browse-stats');
+  if (!grid) return;
+
+  const cards = getVisibleCards();
+  const owned = cards.filter(c => (collection[c.id] || 0) > 0).length;
+  stats.innerHTML = `<b>${owned}</b> / ${cards.length} owned`;
+
+  grid.innerHTML = cards.map(c => cardThumbHTML(c)).join('');
+
+  // Lazy-load images
+  grid.querySelectorAll('img[data-src]').forEach(img => {
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        img.src = img.dataset.src;
+        img.classList.remove('loading');
+        obs.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    obs.observe(img);
+  });
+}
+
+function cardThumbHTML(c) {
+  const qty = collection[c.id] || 0;
+  const wanted = wantlist[c.id] ? ' wanted' : '';
+  const owned  = qty > 0 ? ' owned' : '';
+  return `<div class="card-thumb${owned}${wanted}" data-id="${c.id}">
+    <img data-src="${c.image || ''}" src="" alt="${c.name}" class="loading">
+    <div class="qty-badge">${qty}×</div>
+    <div class="want-badge">♡ Want</div>
+    <div class="card-id-label">${c.id}</div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CARD MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function openCard(baseId) {
+  const variants = CARDS.filter(c => c.baseId === baseId || c.id === baseId);
+  if (!variants.length) return;
+  const base = variants.find(c => c.id === baseId) || variants[0];
+
+  document.getElementById('modal-title').textContent = base.name;
+
+  const colorClass = `color-${(base.color || '').split('/')[0].trim()}`;
+  const subtypeLine = base.subtypes && base.subtypes.length
+    ? `<div class="stat-row"><div class="stat-label">Subtypes</div><div class="stat-value">${base.subtypes.join(' / ')}</div></div>`
+    : '';
+
+  const effectBlock = base.effect
+    ? `<div class="effect-box">${base.effect}</div>` : '';
+  const triggerBlock = base.trigger
+    ? `<div class="trigger-box"><strong>[Trigger]</strong> ${base.trigger}</div>` : '';
+
+  const cmSearch = encodeURIComponent(`${base.name} ${base.set}`);
+  const limitlessUrl = `https://onepiece.limitlesstcg.com/cards/${base.baseId || base.id}`;
+  const cmUrl = `https://www.cardmarket.com/en/OnePiece/Products/Search?searchString=${cmSearch}`;
+
+  const variantsHTML = variants.map(v => {
+    const qty = collection[v.id] || 0;
+    const isWanted = wantlist[v.id] ? ' active' : '';
+    const label = v.variant || 'Base print';
+    return `<div class="variant-row" data-vid="${v.id}">
+      <div class="variant-thumb"><img src="${v.image}" alt="${label}" loading="lazy"></div>
+      <div class="variant-label">${label}</div>
+      <div class="qty-ctrl">
+        <button class="qty-btn" data-action="dec" data-vid="${v.id}">−</button>
+        <div class="qty-display" id="qty-${v.id}">${qty}</div>
+        <button class="qty-btn" data-action="inc" data-vid="${v.id}">+</button>
+      </div>
+      <button class="want-btn${isWanted}" data-vid="${v.id}" data-action="want">♡ Want</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-img-wrap">
+      <img src="${base.image}" alt="${base.name}" loading="lazy">
+    </div>
+    <div class="modal-info">
+      <div class="modal-name">${base.name}</div>
+      <div class="modal-id">${base.id} &nbsp;
+        <span class="color-pill ${colorClass}">${base.color || ''}</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-row"><div class="stat-label">Type</div><div class="stat-value">${base.type || '—'}</div></div>
+        <div class="stat-row"><div class="stat-label">Rarity</div><div class="stat-value">${base.rarity || '—'}</div></div>
+        ${base.cost ? `<div class="stat-row"><div class="stat-label">Cost</div><div class="stat-value">${base.cost}</div></div>` : ''}
+        ${base.life ? `<div class="stat-row"><div class="stat-label">Life</div><div class="stat-value">${base.life}</div></div>` : ''}
+        ${base.power ? `<div class="stat-row"><div class="stat-label">Power</div><div class="stat-value">${base.power}</div></div>` : ''}
+        ${base.counter ? `<div class="stat-row"><div class="stat-label">Counter</div><div class="stat-value">${base.counter}</div></div>` : ''}
+        ${base.attribute ? `<div class="stat-row"><div class="stat-label">Attribute</div><div class="stat-value">${base.attribute}</div></div>` : ''}
+        ${subtypeLine}
+      </div>
+      ${effectBlock}
+      ${triggerBlock}
+      <div class="modal-links">
+        <a class="ext-link" href="${limitlessUrl}" target="_blank" rel="noopener">🔗 Limitless</a>
+        <a class="ext-link" href="${cmUrl}" target="_blank" rel="noopener">🛒 Cardmarket</a>
+      </div>
+    </div>
+    <div class="variants-section">
+      <h3>Prints &amp; Variants</h3>
+      ${variantsHTML}
+    </div>`;
+
+  const overlay = document.getElementById('card-modal');
+  overlay.classList.add('open');
+  overlay.scrollTop = 0;
+}
+
+function closeModal() {
+  document.getElementById('card-modal').classList.remove('open');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEARCH
+// ─────────────────────────────────────────────────────────────────────────────
+function runSearch() {
+  const text    = document.getElementById('s-text').value.trim().toLowerCase();
+  const color   = document.getElementById('s-color').value;
+  const type    = document.getElementById('s-type').value;
+  const attr    = document.getElementById('s-attr').value;
+  const subtype = document.getElementById('s-subtype').value.trim().toLowerCase();
+  const costMin = parseInt(document.getElementById('s-cost-min').value) || 0;
+  const costMax = parseInt(document.getElementById('s-cost-max').value) || 99;
+  const powMin  = parseInt(document.getElementById('s-pow-min').value)  || 0;
+
+  let results = CARDS.filter(c => !c.variant); // base prints
+
+  if (text)    results = results.filter(c =>
+    (c.name || '').toLowerCase().includes(text) ||
+    (c.effect || '').toLowerCase().includes(text) ||
+    (c.id || '').toLowerCase().includes(text)
+  );
+  if (color)   results = results.filter(c => (c.color || '').includes(color));
+  if (type)    results = results.filter(c => c.type === type);
+  if (attr)    results = results.filter(c => c.attribute === attr);
+  if (subtype) results = results.filter(c =>
+    (c.subtypes || []).some(s => s.toLowerCase().includes(subtype))
+  );
+  results = results.filter(c => {
+    const cost = parseInt(c.cost) || 0;
+    return cost >= costMin && cost <= costMax;
+  });
+  if (powMin) results = results.filter(c => parseInt(c.power) >= powMin);
+
+  const grid = document.getElementById('search-grid');
+  const empty = document.getElementById('search-empty');
+  if (!results.length) {
+    grid.style.display = 'none'; grid.innerHTML = '';
+    empty.innerHTML = '<div class="icon">🔍</div><div>No cards match your search</div>';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.style.display = '';
+  grid.innerHTML = results.map(c => cardThumbHTML(c)).join('');
+
+  grid.querySelectorAll('img[data-src]').forEach(img => {
+    img.src = img.dataset.src; img.classList.remove('loading');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLLECTION & WANTLIST
+// ─────────────────────────────────────────────────────────────────────────────
+function renderCollection() {
+  const wrap = document.getElementById('coll-list');
+  const filter = (document.getElementById('coll-search')?.value || '').toLowerCase();
+  const entries = Object.entries(collection)
+    .filter(([, qty]) => qty > 0)
+    .map(([id, qty]) => ({ id, qty, card: CARDS.find(c => c.id === id) }))
+    .filter(({ id, card }) => {
+      if (!filter) return true;
+      return id.toLowerCase().includes(filter) ||
+        (card && card.name.toLowerCase().includes(filter));
+    });
+
+  document.getElementById('coll-stats').textContent =
+    `${entries.length} variant${entries.length !== 1 ? 's' : ''}`;
+
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="list-empty"><div>No cards in collection yet</div><div style="font-size:.8rem;color:var(--text3)">Browse a set and tap cards to add them</div></div>';
+    return;
+  }
+  wrap.innerHTML = entries.map(({ id, qty, card }) => collItemHTML(id, qty, card)).join('');
+}
+
+function collItemHTML(id, qty, card) {
+  const name = card ? card.name : id;
+  const img  = card ? card.image : '';
+  const set  = card ? card.set  : '';
+  return `<div class="collection-item" data-id="${card ? card.baseId : id}" style="cursor:pointer">
+    <div class="ci-img"><img src="${img}" alt="${name}" loading="lazy"></div>
+    <div class="ci-info">
+      <div class="ci-name">${name}</div>
+      <div class="ci-meta">${id} · ${set}</div>
+    </div>
+    <div class="qty-ctrl">
+      <button class="qty-btn" data-action="dec" data-vid="${id}">−</button>
+      <div class="qty-display">${qty}</div>
+      <button class="qty-btn" data-action="inc" data-vid="${id}">+</button>
+    </div>
+  </div>`;
+}
+
+function renderWantlist() {
+  const wrap = document.getElementById('want-list');
+  const entries = Object.entries(wantlist)
+    .filter(([, v]) => v)
+    .map(([id]) => ({ id, card: CARDS.find(c => c.id === id) }));
+
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="list-empty"><div>Wantlist is empty</div><div style="font-size:.8rem;color:var(--text3)">Tap ♡ Want on any card variant</div></div>';
+    return;
+  }
+  wrap.innerHTML = entries.map(({ id, card }) => wantItemHTML(id, card)).join('');
+}
+
+function wantItemHTML(id, card) {
+  const name = card ? card.name : id;
+  const img  = card ? card.image : '';
+  const set  = card ? card.set  : '';
+  return `<div class="collection-item" data-id="${card ? card.baseId : id}" style="cursor:pointer">
+    <div class="ci-img"><img src="${img}" alt="${name}" loading="lazy"></div>
+    <div class="ci-info">
+      <div class="ci-name">${name}</div>
+      <div class="ci-meta">${id} · ${set}</div>
+    </div>
+    <button class="want-btn active" data-vid="${id}" data-action="want" style="font-size:.78rem">♡ Remove</button>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QTY / WANT MUTATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function changeQty(variantId, delta) {
+  const cur = collection[variantId] || 0;
+  const next = Math.max(0, cur + delta);
+  if (next === 0) delete collection[variantId];
+  else collection[variantId] = next;
+  saveToStorage();
+  // Update modal qty display if open
+  const el = document.getElementById(`qty-${variantId}`);
+  if (el) el.textContent = next;
+  // Refresh grid thumb if visible
+  refreshCardThumb(variantId);
+  renderCollection();
+}
+
+function toggleWant(variantId) {
+  wantlist[variantId] = !wantlist[variantId];
+  if (!wantlist[variantId]) delete wantlist[variantId];
+  saveToStorage();
+  // Update want button in modal if open
+  const btn = document.querySelector(`.want-btn[data-vid="${variantId}"]`);
+  if (btn) btn.classList.toggle('active', !!wantlist[variantId]);
+  refreshCardThumb(variantId);
+  renderWantlist();
+  refreshCmExport();
+}
+
+function refreshCardThumb(variantId) {
+  // Find base card ID from variant
+  const card = CARDS.find(c => c.id === variantId);
+  if (!card) return;
+  const baseId = card.baseId || card.id;
+  const thumb = document.querySelector(`.card-thumb[data-id="${baseId}"]`);
+  if (!thumb) return;
+  const qty = Object.entries(collection)
+    .filter(([id]) => {
+      const c = CARDS.find(x => x.id === id);
+      return c && (c.baseId === baseId || c.id === baseId);
+    })
+    .reduce((sum, [, q]) => sum + q, 0);
+  const isWanted = Object.entries(wantlist)
+    .some(([id, v]) => {
+      const c = CARDS.find(x => x.id === id);
+      return v && c && (c.baseId === baseId || c.id === baseId);
+    });
+  thumb.classList.toggle('owned', qty > 0);
+  thumb.classList.toggle('wanted', isWanted);
+  const badge = thumb.querySelector('.qty-badge');
+  if (badge) badge.textContent = `${qty}×`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECKS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderDeckSidebar() {
+  const el = document.getElementById('deck-list-sidebar');
+  if (!decks.length) {
+    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:.82rem">No decks yet</div>';
+    return;
+  }
+  el.innerHTML = decks.map(d => {
+    const total = d.cards.reduce((s, e) => s + e.qty, 0);
+    return `<div class="group-item${activeDeckId === d.id ? ' active' : ''}" data-deck-id="${d.id}">
+      ${d.name} <span class="gi-count">${total}/51</span>
+    </div>`;
+  }).join('');
+}
+
+function openDeck(id) {
+  activeDeckId = id;
+  const deck = decks.find(d => d.id === id);
+  if (!deck) return;
+  renderDeckSidebar();
+  document.getElementById('deck-editor').style.display = '';
+  document.getElementById('deck-empty-state').style.display = 'none';
+  document.getElementById('deck-title-input').value = deck.name;
+  renderDeckCards();
+}
+
+function renderDeckCards() {
+  const deck = decks.find(d => d.id === activeDeckId);
+  if (!deck) return;
+  const total = deck.cards.reduce((s, e) => s + e.qty, 0);
+  const leaders = deck.cards.filter(e => {
+    const c = CARDS.find(x => x.id === e.id);
+    return c && c.type === 'Leader';
+  }).reduce((s, e) => s + e.qty, 0);
+  document.getElementById('deck-progress-bar').style.width = `${Math.min(100, (total / 51) * 100)}%`;
+  document.getElementById('deck-count').innerHTML =
+    `<span>${total}</span> / 51 cards — <span id="deck-leader-count">${leaders}</span> leader`;
+
+  const list = document.getElementById('deck-cards-list');
+  if (!deck.cards.length) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3)">No cards yet — type a card ID or name above</div>';
+    return;
+  }
+  list.innerHTML = deck.cards.map(entry => {
+    const c = CARDS.find(x => x.id === entry.id);
+    const name = c ? c.name : entry.id;
+    const owned = (collection[entry.id] || 0) >= entry.qty;
+    return `<div class="deck-item${owned ? '' : ' not-owned'}" data-deck-card-id="${entry.id}">
+      <div class="di-qty">${entry.qty}×</div>
+      <div>
+        <div class="di-name">${name}</div>
+        <div class="di-id">${entry.id}</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="qty-btn" data-deck-action="dec" data-eid="${entry.id}">−</button>
+      <button class="qty-btn" data-deck-action="inc" data-eid="${entry.id}">+</button>
+      <button class="di-del" data-deck-action="del" data-eid="${entry.id}">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function deckAddCard(rawInput) {
+  const deck = decks.find(d => d.id === activeDeckId);
+  if (!deck) return;
+  const query = rawInput.trim().toUpperCase();
+  let card = CARDS.find(c => c.id === query);
+  if (!card) card = CARDS.find(c => c.name.toUpperCase() === query);
+  if (!card) { toast(`Card not found: ${rawInput}`); return; }
+
+  const isLeader = card.type === 'Leader';
+  const existing = deck.cards.find(e => e.id === card.id);
+  const total = deck.cards.reduce((s, e) => s + e.qty, 0);
+  const currentQty = existing ? existing.qty : 0;
+
+  if (total >= 51) { toast('Deck is full (51 cards max)'); return; }
+  if (!isLeader && currentQty >= 4) { toast(`Max 4 copies of ${card.name}`); return; }
+  if (isLeader && currentQty >= 1) { toast('Deck already has a Leader'); return; }
+
+  if (existing) existing.qty++;
+  else deck.cards.push({ id: card.id, qty: 1 });
+  saveToStorage();
+  renderDeckCards();
+  renderDeckSidebar();
+}
+
+function deckChangeQty(eid, delta) {
+  const deck = decks.find(d => d.id === activeDeckId);
+  if (!deck) return;
+  const entry = deck.cards.find(e => e.id === eid);
+  if (!entry) return;
+  entry.qty = Math.max(0, entry.qty + delta);
+  if (entry.qty === 0) deck.cards = deck.cards.filter(e => e.id !== eid);
+  saveToStorage();
+  renderDeckCards();
+  renderDeckSidebar();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUPS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderGroupSidebar() {
+  const el = document.getElementById('group-list-sidebar');
+  if (!groups.length) {
+    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:.82rem">No groups yet</div>';
+    return;
+  }
+  el.innerHTML = groups.map(g =>
+    `<div class="group-item${activeGroupId === g.id ? ' active' : ''}" data-group-id="${g.id}">
+      ${g.name} <span class="gi-count">${g.cards.length}</span>
+    </div>`
+  ).join('');
+}
+
+function openGroup(id) {
+  activeGroupId = id;
+  renderGroupSidebar();
+  document.getElementById('group-editor').style.display = '';
+  document.getElementById('group-empty-state').style.display = 'none';
+  renderGroupCards();
+}
+
+function renderGroupCards() {
+  const group = groups.find(g => g.id === activeGroupId);
+  if (!group) return;
+  const list = document.getElementById('group-cards-list');
+  if (!group.cards.length) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3)">No cards in this group</div>';
+    return;
+  }
+  list.innerHTML = group.cards.map(id => {
+    const c = CARDS.find(x => x.id === id);
+    const name = c ? c.name : id;
+    const img  = c ? c.image : '';
+    return `<div class="collection-item" data-id="${c ? c.baseId : id}" style="cursor:pointer">
+      <div class="ci-img"><img src="${img}" alt="${name}" loading="lazy"></div>
+      <div class="ci-info">
+        <div class="ci-name">${name}</div>
+        <div class="ci-meta">${id}</div>
+      </div>
+      <button class="di-del" data-group-del="${id}" style="width:22px;height:22px;border-radius:50%;background:var(--surface3);border:1px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:.85rem">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function groupAddCard(rawInput) {
+  const group = groups.find(g => g.id === activeGroupId);
+  if (!group) return;
+  const query = rawInput.trim().toUpperCase();
+  let card = CARDS.find(c => c.id === query);
+  if (!card) card = CARDS.find(c => c.name.toUpperCase() === query);
+  if (!card) { toast(`Card not found: ${rawInput}`); return; }
+  if (group.cards.includes(card.id)) { toast('Already in group'); return; }
+  group.cards.push(card.id);
+  saveToStorage();
+  renderGroupCards();
+  renderGroupSidebar();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OCR / SCAN
+// ─────────────────────────────────────────────────────────────────────────────
+let tesseractReady = false;
+let tesseractWorker = null;
+
+async function loadTesseract() {
+  if (tesseractReady) return true;
+  toast('Loading OCR engine…');
+  const urls = [
+    'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.4/tesseract.min.js',
+    'https://unpkg.com/tesseract.js@4.1.4/dist/tesseract.min.js',
+  ];
+  for (const url of urls) {
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = url; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      tesseractReady = true;
+      return true;
+    } catch { /* try next */ }
+  }
+  toast('Could not load OCR engine — use manual entry');
+  return false;
+}
+
+async function processImage(file) {
+  const result = document.getElementById('scan-result');
+  const area = document.getElementById('scan-drop-area');
+  area.classList.add('scanning');
+  result.style.display = 'none';
+
+  // Show preview
+  const preview = document.getElementById('scan-preview');
+  const previewImg = document.getElementById('scan-preview-img');
+  const reader = new FileReader();
+  reader.onload = e => { previewImg.src = e.target.result; preview.style.display = ''; };
+  reader.readAsDataURL(file);
+
+  const ok = await loadTesseract();
+  if (!ok) { area.classList.remove('scanning'); return; }
+
+  // Preprocess: draw to canvas, crop bottom-right 40%, grayscale + contrast
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = async () => {
+    const c = document.createElement('canvas');
+    const sw = Math.floor(img.width * 0.4);
+    const sh = Math.floor(img.height * 0.25);
+    const sx = img.width - sw;
+    const sy = img.height - sh;
+    c.width = sw * 2; c.height = sh * 2;
+    const ctx = c.getContext('2d');
+    ctx.filter = 'grayscale(1) contrast(2)';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+
+    try {
+      if (!tesseractWorker) {
+        tesseractWorker = await Tesseract.createWorker('eng', 1, {
+          logger: () => {}
+        });
+      }
+      const { data: { text } } = await tesseractWorker.recognize(c);
+
+      // Match card ID patterns
+      const match = text.match(/\b([A-Z]{2,4}-\d{3}[A-Z]?)\b/i) ||
+                    text.match(/\b(P-\d{3})\b/i);
+      const cardId = match ? match[1].toUpperCase() : null;
+
+      area.classList.remove('scanning');
+      if (cardId) {
+        const card = CARDS.find(x => x.id === cardId);
+        if (card) {
+          result.style.display = '';
+          result.innerHTML = `<div style="font-size:.85rem;color:var(--text2);margin-bottom:8px">Found:</div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--accent);margin-bottom:12px">${card.name} — ${cardId}</div>
+            <button class="btn btn-primary" id="scan-add-btn" data-id="${cardId}">+ Add to collection</button>`;
+        } else {
+          result.style.display = '';
+          result.innerHTML = `<div style="color:var(--text2)">Detected: <b>${cardId}</b></div>
+            <div style="font-size:.82rem;color:var(--text3);margin-top:6px">Not in card database</div>`;
+        }
+      } else {
+        result.style.display = '';
+        result.innerHTML = `<div style="color:var(--text3)">Could not read a card ID from the image</div>
+          <div style="font-size:.8rem;margin-top:6px">Try manual entry below</div>`;
+      }
+    } catch (e) {
+      area.classList.remove('scanning');
+      result.style.display = '';
+      result.innerHTML = `<div style="color:var(--accent2)">OCR error: ${e.message}</div>`;
+    }
+  };
+  img.src = url;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CARDMARKET EXPORT
+// ─────────────────────────────────────────────────────────────────────────────
+function refreshCmExport() {
+  const wanted = Object.entries(wantlist).filter(([, v]) => v);
+  if (!wanted.length) {
+    document.getElementById('cm-export-area').value = '';
+    return;
+  }
+  // Format: "Amount Name" per line (Cardmarket wantlist format)
+  const lines = wanted.map(([id]) => {
+    const c = CARDS.find(x => x.id === id);
+    return c ? `1 ${c.name} (${c.set})` : `1 ${id}`;
+  });
+  document.getElementById('cm-export-area').value = lines.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAVE / LOAD CSV
+// ─────────────────────────────────────────────────────────────────────────────
+const CSV_VERSION = '2';
+
+function toCSV() {
+  const rows = ['#OPTCG-TRACKER-v' + CSV_VERSION];
+  rows.push('#COLLECTION');
+  for (const [id, qty] of Object.entries(collection)) {
+    if (qty > 0) rows.push(`C,${id},${qty}`);
+  }
+  rows.push('#WANTLIST');
+  for (const [id, v] of Object.entries(wantlist)) {
+    if (v) rows.push(`W,${id}`);
+  }
+  rows.push('#DECKS');
+  for (const deck of decks) {
+    rows.push(`D,${deck.id},${JSON.stringify(deck.name)}`);
+    for (const entry of deck.cards) rows.push(`DC,${deck.id},${entry.id},${entry.qty}`);
+  }
+  rows.push('#GROUPS');
+  for (const group of groups) {
+    rows.push(`G,${group.id},${JSON.stringify(group.name)}`);
+    for (const id of group.cards) rows.push(`GC,${group.id},${id}`);
+  }
+  return rows.join('\n');
+}
+
+function downloadCSV() {
+  const blob = new Blob([toCSV()], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `optcg-collection-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('CSV saved');
+}
+
+function fromCSV(text) {
+  const newCollection = {};
+  const newWantlist   = {};
+  const newDecks      = [];
+  const newGroups     = [];
+
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const parts = t.split(',');
+    const type = parts[0];
+    if (type === 'C' && parts.length >= 3) {
+      newCollection[parts[1]] = parseInt(parts[2]) || 0;
+    } else if (type === 'W' && parts.length >= 2) {
+      newWantlist[parts[1]] = true;
+    } else if (type === 'D' && parts.length >= 3) {
+      newDecks.push({ id: parts[1], name: JSON.parse(parts.slice(2).join(',')), cards: [] });
+    } else if (type === 'DC' && parts.length >= 4) {
+      const deck = newDecks.find(d => d.id === parts[1]);
+      if (deck) deck.cards.push({ id: parts[2], qty: parseInt(parts[3]) || 1 });
+    } else if (type === 'G' && parts.length >= 3) {
+      newGroups.push({ id: parts[1], name: JSON.parse(parts.slice(2).join(',')), cards: [] });
+    } else if (type === 'GC' && parts.length >= 3) {
+      const group = newGroups.find(g => g.id === parts[1]);
+      if (group) group.cards.push(parts[2]);
+    }
+  }
+  return { newCollection, newWantlist, newDecks, newGroups };
+}
+
+function loadCSVFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { newCollection, newWantlist, newDecks, newGroups } = fromCSV(e.target.result);
+      collection = newCollection;
+      wantlist   = newWantlist;
+      decks      = newDecks;
+      groups     = newGroups;
+      saveToStorage();
+      renderBrowse();
+      renderCollection();
+      renderWantlist();
+      renderDeckSidebar();
+      renderGroupSidebar();
+      refreshCmExport();
+      toast('Collection loaded ✓');
+    } catch (err) {
+      toast(`Error loading CSV: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCALSTORAGE PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────────────
+function saveToStorage() {
+  try {
+    localStorage.setItem('optcg-collection', JSON.stringify(collection));
+    localStorage.setItem('optcg-wantlist',   JSON.stringify(wantlist));
+    localStorage.setItem('optcg-decks',      JSON.stringify(decks));
+    localStorage.setItem('optcg-groups',     JSON.stringify(groups));
+  } catch (e) {
+    console.warn('Storage quota exceeded', e);
+  }
+}
+
+function loadFromStorage() {
+  try {
+    collection = JSON.parse(localStorage.getItem('optcg-collection') || '{}');
+    wantlist   = JSON.parse(localStorage.getItem('optcg-wantlist')   || '{}');
+    decks      = JSON.parse(localStorage.getItem('optcg-decks')      || '[]');
+    groups     = JSON.parse(localStorage.getItem('optcg-groups')     || '[]');
+  } catch { /* ignore */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-SAVE ON PAGE HIDE
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') downloadCSV();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB NAVIGATION
+// ─────────────────────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`page-${id}`)?.classList.add('active');
+  document.querySelector(`.nav-tab[data-page="${id}"]`)?.classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROXY PRINT
+// ─────────────────────────────────────────────────────────────────────────────
+function openProxy(card) {
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><style>
+    body{margin:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;}
+    .proxy-card{width:2.5in;height:3.5in;border:1px solid #ccc;border-radius:4px;overflow:hidden;}
+    .proxy-card img{width:100%;height:100%;object-fit:cover;}
+    .disclaimer{font-size:9px;color:#888;margin-top:8px;text-align:center;max-width:300px;}
+    @media print{.disclaimer{display:none}}
+  </style></head><body>
+    <div class="proxy-card"><img src="${card.image}" alt="${card.name}"></div>
+    <div class="disclaimer">For personal playtest use only — not for sale or tournament play.<br>
+    Card images © Eiichiro Oda/Shueisha, Toei Animation, Bandai</div>
+    <script>window.onload=()=>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVENT BINDING
+// ─────────────────────────────────────────────────────────────────────────────
+function bindEvents() {
+  // Nav tabs
+  document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.addEventListener('click', () => showPage(btn.dataset.page));
+  });
+  document.getElementById('scan-nav-btn').addEventListener('click', () => showPage('scan'));
+
+  // Browse controls
+  document.getElementById('set-select').addEventListener('change', renderBrowse);
+  document.getElementById('filter-owned').addEventListener('change', renderBrowse);
+
+  // Click on card grid (browse + search + collection + wantlist)
+  document.addEventListener('click', e => {
+    // Card thumb
+    const thumb = e.target.closest('.card-thumb');
+    if (thumb) { openCard(thumb.dataset.id); return; }
+
+    // Collection/group item click
+    const ci = e.target.closest('.collection-item');
+    if (ci && ci.dataset.id && !e.target.closest('.qty-btn') && !e.target.closest('.want-btn') && !e.target.closest('.di-del')) {
+      openCard(ci.dataset.id); return;
+    }
+
+    // Qty buttons (modal + collection)
+    const qb = e.target.closest('.qty-btn');
+    if (qb) {
+      const action = qb.dataset.action;
+      const vid = qb.dataset.vid;
+      if (action && vid) {
+        changeQty(vid, action === 'inc' ? 1 : -1);
+        return;
+      }
+      // Deck qty buttons
+      const da = qb.dataset.deckAction;
+      if (da) {
+        const eid = qb.dataset.eid;
+        if (da === 'inc') deckChangeQty(eid, 1);
+        else if (da === 'dec') deckChangeQty(eid, -1);
+        else if (da === 'del') { deckChangeQty(eid, -999); }
+        return;
+      }
+    }
+
+    // Want buttons
+    const wb = e.target.closest('.want-btn');
+    if (wb && wb.dataset.action === 'want') { toggleWant(wb.dataset.vid); return; }
+
+    // Scan add button
+    if (e.target.id === 'scan-add-btn') {
+      const id = e.target.dataset.id;
+      changeQty(id, 1);
+      toast(`Added ${id} to collection`);
+      return;
+    }
+
+    // Group delete
+    const gd = e.target.closest('[data-group-del]');
+    if (gd) {
+      const group = groups.find(g => g.id === activeGroupId);
+      if (group) {
+        group.cards = group.cards.filter(id => id !== gd.dataset.groupDel);
+        saveToStorage(); renderGroupCards(); renderGroupSidebar();
+      }
+      return;
+    }
+
+    // Deck sidebar
+    const di = e.target.closest('[data-deck-id]');
+    if (di) { openDeck(di.dataset.deckId); return; }
+
+    // Group sidebar
+    const gi = e.target.closest('[data-group-id]');
+    if (gi) { openGroup(gi.dataset.groupId); return; }
+
+    // Modal close
+    if (e.target === document.getElementById('card-modal') || e.target.id === 'modal-close') {
+      closeModal(); return;
+    }
+  });
+
+  // Search
+  document.getElementById('search-btn').addEventListener('click', runSearch);
+  document.getElementById('s-text').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+  document.getElementById('search-clear').addEventListener('click', () => {
+    document.getElementById('search-form').querySelectorAll('input,select').forEach(el => el.value = '');
+    document.getElementById('search-grid').style.display = 'none';
+    document.getElementById('search-empty').style.display = '';
+    document.getElementById('search-empty').innerHTML = '<div class="icon">🔍</div><div>Enter search criteria above</div>';
+  });
+
+  // Collection filter
+  document.getElementById('coll-search').addEventListener('input', renderCollection);
+
+  // Deck new
+  document.getElementById('new-deck-btn').addEventListener('click', () => {
+    const name = document.getElementById('new-deck-input').value.trim() || 'Untitled Deck';
+    decks.push({ id: Date.now().toString(), name, cards: [] });
+    document.getElementById('new-deck-input').value = '';
+    saveToStorage(); renderDeckSidebar();
+    openDeck(decks[decks.length-1].id);
+  });
+  document.getElementById('new-deck-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('new-deck-btn').click();
+  });
+
+  // Deck add card
+  document.getElementById('deck-add-btn').addEventListener('click', () => {
+    const v = document.getElementById('deck-card-input').value;
+    if (v) { deckAddCard(v); document.getElementById('deck-card-input').value = ''; }
+  });
+  document.getElementById('deck-card-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('deck-add-btn').click();
+  });
+
+  // Deck title edit
+  document.getElementById('deck-title-input').addEventListener('input', e => {
+    const deck = decks.find(d => d.id === activeDeckId);
+    if (deck) { deck.name = e.target.value; saveToStorage(); renderDeckSidebar(); }
+  });
+
+  // Delete deck
+  document.getElementById('del-deck-btn').addEventListener('click', () => {
+    if (!confirm('Delete this deck?')) return;
+    decks = decks.filter(d => d.id !== activeDeckId);
+    activeDeckId = null;
+    document.getElementById('deck-editor').style.display = 'none';
+    document.getElementById('deck-empty-state').style.display = '';
+    saveToStorage(); renderDeckSidebar();
+  });
+
+  // Group new
+  document.getElementById('new-group-btn').addEventListener('click', () => {
+    const name = document.getElementById('new-group-input').value.trim() || 'New Group';
+    groups.push({ id: Date.now().toString(), name, cards: [] });
+    document.getElementById('new-group-input').value = '';
+    saveToStorage(); renderGroupSidebar();
+    openGroup(groups[groups.length-1].id);
+  });
+  document.getElementById('new-group-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('new-group-btn').click();
+  });
+
+  // Group add card
+  document.getElementById('group-add-btn').addEventListener('click', () => {
+    const v = document.getElementById('group-search-input').value;
+    if (v) { groupAddCard(v); document.getElementById('group-search-input').value = ''; }
+  });
+
+  // Delete group
+  document.getElementById('del-group-btn').addEventListener('click', () => {
+    if (!confirm('Delete this group?')) return;
+    groups = groups.filter(g => g.id !== activeGroupId);
+    activeGroupId = null;
+    document.getElementById('group-editor').style.display = 'none';
+    document.getElementById('group-empty-state').style.display = '';
+    saveToStorage(); renderGroupSidebar();
+  });
+
+  // Scan
+  document.getElementById('scan-input').addEventListener('change', e => {
+    if (e.target.files[0]) processImage(e.target.files[0]);
+  });
+
+  // Manual ID entry
+  document.getElementById('manual-add-btn').addEventListener('click', () => {
+    const raw = document.getElementById('manual-id-input').value.trim().toUpperCase();
+    if (!raw) return;
+    const card = CARDS.find(c => c.id === raw);
+    if (!card) { toast(`Not found: ${raw}`); return; }
+    changeQty(raw, 1);
+    toast(`Added ${card.name} (${raw})`);
+    document.getElementById('manual-id-input').value = '';
+  });
+  document.getElementById('manual-id-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('manual-add-btn').click();
+  });
+
+  // Save/load buttons
+  document.getElementById('save-btn').addEventListener('click', downloadCSV);
+  document.getElementById('manual-save-btn').addEventListener('click', downloadCSV);
+  document.getElementById('load-csv-input').addEventListener('change', e => {
+    if (e.target.files[0]) loadCSVFile(e.target.files[0]);
+  });
+  document.getElementById('cm-copy-btn').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('cm-export-area').value)
+      .then(() => toast('Copied to clipboard'))
+      .catch(() => toast('Copy failed — select and copy manually'));
+  });
+  document.getElementById('cm-refresh-btn').addEventListener('click', refreshCmExport);
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    if (!confirm('Reset all collection data? This cannot be undone.')) return;
+    collection = {}; wantlist = {}; decks = []; groups = [];
+    saveToStorage();
+    renderBrowse(); renderCollection(); renderWantlist();
+    renderDeckSidebar(); renderGroupSidebar(); refreshCmExport();
+    toast('All data reset');
+  });
+
+  // Export wantlist
+  document.getElementById('export-wantlist-btn').addEventListener('click', () => {
+    refreshCmExport();
+    showPage('saveload');
+    // Scroll to export section
+    setTimeout(() => document.getElementById('cm-export-area').scrollIntoView(), 100);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
