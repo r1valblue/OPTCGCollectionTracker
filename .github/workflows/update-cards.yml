@@ -1,0 +1,109 @@
+name: Update card database
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  update-cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install chromium --with-deps
+
+      - name: Fetch card data
+        run: |
+          cat << 'SCRIPT' > fetch_cards.js
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+
+          const ENDPOINTS = [
+            'https://optcgapi.com/api/allSetCards/',
+            'https://optcgapi.com/api/allSTCards/',
+            'https://optcgapi.com/api/allPromoCards/',
+          ];
+
+          function norm(d) {
+            const id = (d.card_set_id||d.card_id||d.id||'').toUpperCase().trim();
+            const name = (d.card_name||d.name||'').trim();
+            if (!id||!name) return null;
+            return {
+              id, name,
+              set: (d.set_id||'').replace(/-/g,'').toUpperCase() || id.split('-')[0],
+              rarity: d.rarity||'',
+              color: d.card_color||d.color||'',
+              type: d.card_type||d.type||'',
+              cost: String(d.card_cost||d.cost||''),
+              power: String(d.card_power||d.power||''),
+              counter: String(d.counter_amount||d.counter||''),
+              attribute: d.attribute||'',
+              subRaw: (d.sub_types||d.subtypes||'').trim(),
+              effect: d.card_text||d.card_effect||d.effect||'',
+              image: d.card_image||'',
+            };
+          }
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            });
+            const page = await context.newPage();
+            const db = {};
+
+            for (const url of ENDPOINTS) {
+              console.log('Fetching:', url);
+              try {
+                const res = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+                if (!res || !res.ok()) { console.warn('  HTTP', res?.status(), '— skipped'); continue; }
+                const text = await page.evaluate(() => document.body.innerText);
+                let data;
+                try { data = JSON.parse(text); }
+                catch { const m = text.match(/\[[\s\S]*\]/); if (m) data = JSON.parse(m[0]); else continue; }
+                const items = Array.isArray(data) ? data : (data.results||[]);
+                let n = 0;
+                items.forEach(d => { const c = norm(d); if (c) { db[c.id]=c; n++; } });
+                console.log(' ', n, 'cards, total:', Object.keys(db).length);
+              } catch (e) { console.warn('  Error:', e.message); }
+              await new Promise(r => setTimeout(r, 1000));
+            }
+
+            await browser.close();
+
+            if (!Object.keys(db).length) {
+              console.error('No cards fetched — aborting');
+              process.exit(1);
+            }
+
+            fs.writeFileSync('cards.json', JSON.stringify({
+              generated: new Date().toISOString(),
+              count: Object.keys(db).length,
+              cards: Object.values(db)
+            }));
+            console.log('Written:', Object.keys(db).length, 'cards to cards.json');
+          })();
+          SCRIPT
+          node fetch_cards.js
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet cards.json; then
+            echo "No changes"
+          else
+            COUNT=$(node -e "console.log(require('./cards.json').count)")
+            git add cards.json
+            git commit -m "chore: update card database (${COUNT} cards) [skip ci]"
+            git push
+          fi
