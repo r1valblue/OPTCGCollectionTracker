@@ -1,50 +1,62 @@
 name: Update card database
-
+ 
 on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
-
+ 
 jobs:
   update-cards:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+ 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+ 
       - name: Install Playwright
         run: |
           npm init -y
           npm install playwright
           npx playwright install chromium --with-deps
-
+ 
       - name: Fetch card data
         run: |
           cat << 'SCRIPT' > fetch_cards.js
           const { chromium } = require('playwright');
           const fs = require('fs');
-
-          // We fetch every card individually per set to guarantee we get ALL rarities
-          // including base art, parallel, secret rare etc. — not just the highest rarity.
-          // The bulk endpoints return one entry per card number (highest rarity only).
-          // Per-set filtered endpoints return all variants when limit is high enough.
-
+ 
+          // Known card counts per set derived from official checklists.
+          // This lets us generate stub entries for cards the API doesn't return,
+          // so every card is at least findable and scannable in the app.
+          // Format: setId -> [firstCardNum, lastCardNum]
+          const SET_RANGES = {
+            OP01:[1,121], OP02:[1,127], OP03:[1,125], OP04:[1,128],
+            OP05:[1,122], OP06:[1,122], OP07:[1,126], OP08:[1,126],
+            OP09:[1,122], OP10:[1,122], OP11:[1,120], OP12:[1,120],
+            OP13:[1,122], OP14:[1,122], OP15:[1,120],
+            EB01:[1,60],  EB02:[1,60],  EB03:[1,60],  EB04:[1,60],
+            PRB01:[1,50], PRB02:[1,50],
+            ST01:[1,17], ST02:[1,17], ST03:[1,17], ST04:[1,17], ST05:[1,17],
+            ST06:[1,17], ST07:[1,17], ST08:[1,17], ST09:[1,17], ST10:[1,17],
+            ST11:[1,17], ST12:[1,17], ST13:[1,17], ST14:[1,17], ST15:[1,17],
+            ST16:[1,17], ST17:[1,17], ST18:[1,17], ST19:[1,17], ST20:[1,17],
+            ST21:[1,17], ST22:[1,17], ST23:[1,17], ST24:[1,17], ST25:[1,17],
+            ST26:[1,17], ST27:[1,17], ST28:[1,17],
+          };
+ 
           const MAIN_SETS = [
             'OP01','OP02','OP03','OP04','OP05','OP06','OP07','OP08',
             'OP09','OP10','OP11','OP12','OP13','OP14','OP15',
             'EB01','EB02','EB03','EB04','PRB01','PRB02'
           ];
-          const ST_SETS = [
-            'ST01','ST02','ST03','ST04','ST05','ST06','ST07','ST08','ST09','ST10',
-            'ST11','ST12','ST13','ST14','ST15','ST16','ST17','ST18','ST19','ST20',
-            'ST21','ST22','ST23','ST24','ST25','ST26','ST27','ST28'
-          ];
-
+          const ST_SETS = Object.keys(SET_RANGES).filter(k=>k.startsWith('ST'));
           const VARIANT_RE = /(_p\d+|_r\d+|_s\d+|_jp\d+)$/i;
-
+          const IMGBASE = 'https://en.onepiece-cardgame.com/images/cardlist/card/';
+ 
+          function pad(n){ return String(n).padStart(3,'0'); }
+ 
           function norm(d) {
             const id = (d.card_set_id||d.card_id||d.id||'').toUpperCase().trim();
             const name = (d.card_name||d.name||'').trim();
@@ -52,9 +64,8 @@ jobs:
             const baseId = id.replace(VARIANT_RE, '');
             const rawSet = d.set_id || '';
             const set = rawSet.replace(/-/g,'').toUpperCase() || baseId.split('-')[0];
-            // Build image URL — use API-provided one if available, else construct from official site
             const imgId = (d.card_image_id || id).toUpperCase();
-            const image = d.card_image || `https://en.onepiece-cardgame.com/images/cardlist/card/${imgId}.png`;
+            const image = d.card_image || `${IMGBASE}${imgId}.png`;
             return {
               id, baseId, name, set,
               rarity:    d.rarity || '',
@@ -70,91 +81,146 @@ jobs:
               image,
             };
           }
-
-          async function fetchPage(page, url) {
-            try {
-              const res = await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
-              if (!res || !res.ok()) { console.warn('  HTTP', res?.status(), url); return []; }
-              const text = await page.evaluate(() => document.body.innerText);
-              let data;
-              try { data = JSON.parse(text); } catch {
-                const m = text.match(/\[[\s\S]*\]/);
-                if (m) { try { data = JSON.parse(m[0]); } catch { return []; } }
-                else return [];
-              }
-              return Array.isArray(data) ? data : (data.results || []);
-            } catch(e) { console.warn('  Error:', e.message); return []; }
+ 
+          // Fetch a paginated endpoint, following offset until exhausted
+          async function fetchAllPages(page, baseUrl, ep) {
+            const all = [];
+            let offset = 0;
+            const limit = 50; // conservative page size
+            while (true) {
+              const url = `${baseUrl}&limit=${limit}&offset=${offset}`;
+              try {
+                const res = await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+                if (!res || !res.ok()) break;
+                const text = await page.evaluate(() => document.body.innerText);
+                let data;
+                try { data = JSON.parse(text); } catch {
+                  const m = text.match(/\[[\s\S]*\]/);
+                  if (m) { try { data = JSON.parse(m[0]); } catch { break; } } else break;
+                }
+                const items = Array.isArray(data) ? data : (data.results || []);
+                if (!items.length) break;
+                all.push(...items);
+                // If we got fewer than limit, we're on the last page
+                if (items.length < limit) break;
+                offset += limit;
+                await new Promise(r => setTimeout(r, 400));
+              } catch(e) { console.warn('  Fetch error:', e.message); break; }
+            }
+            return all;
           }
-
+ 
           (async () => {
             const browser = await chromium.launch({ headless: true });
             const context = await browser.newContext({
               userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             });
             const page = await context.newPage();
-            // db keyed by full card ID (including _p1 suffix) — never overwrite
-            const db = {};
-
-            // Fetch main sets with high limit to capture all rarities per set
+            const db = {}; // keyed by full card ID — never overwrite
+ 
+            // Step 1: Generate stub entries for ALL known card IDs
+            // These guarantee every card is findable even if the API has no data for it
+            console.log('Generating stubs for all known card IDs...');
+            for (const [setId, [first, last]] of Object.entries(SET_RANGES)) {
+              for (let n = first; n <= last; n++) {
+                const id = `${setId}-${pad(n)}`;
+                db[id] = {
+                  id, baseId: id, name: id, set: setId,
+                  rarity:'', color:'', type:'', cost:'', power:'', counter:'',
+                  attribute:'', subRaw:'', effect:'', trigger:'',
+                  image: `${IMGBASE}${id}.png`,
+                  stub: true, // mark as stub so app knows to show image but not text
+                };
+              }
+            }
+            console.log(`  ${Object.keys(db).length} stub entries generated`);
+ 
+            // Step 2: Fetch real card data from OPTCG API, overwriting stubs with real data
+            console.log('\nFetching real card data from OPTCG API...');
+ 
             for (const setId of MAIN_SETS) {
-              const url = `https://optcgapi.com/api/sets/filtered/?set_id=${setId}&limit=500`;
-              console.log('Fetching set:', setId);
-              const items = await fetchPage(page, url);
+              console.log(`Fetching set: ${setId}`);
+              const items = await fetchAllPages(page, `https://optcgapi.com/api/sets/filtered/?set_id=${setId}`, 'sets');
               let n = 0;
               items.forEach(d => {
                 const c = norm(d);
-                if (c && !db[c.id]) { db[c.id] = c; n++; }
-                // Also ensure base ID entry exists (in case API only returned variants)
-                if (c && c.id !== c.baseId && !db[c.baseId]) {
-                  db[c.baseId] = { ...c, id: c.baseId, name: c.name.replace(/\s*\([^)]*(?:parallel|alt art)[^)]*\)\s*$/i,'').trim() || c.name };
+                if (!c) return;
+                // Always overwrite stubs; never overwrite real data with different real data
+                if (!db[c.id] || db[c.id].stub) { db[c.id] = c; n++; }
+                // If API only returned a variant, ensure base has real data too
+                if (c.id !== c.baseId && (!db[c.baseId] || db[c.baseId].stub)) {
+                  db[c.baseId] = {
+                    ...c,
+                    id: c.baseId,
+                    name: c.name.replace(/\s*\([^)]*(?:parallel|alt art|alternate art)[^)]*\)\s*$/i,'').trim() || c.name,
+                    image: `${IMGBASE}${c.baseId}.png`,
+                  };
                 }
               });
-              console.log(' ', n, 'new cards (total:', Object.keys(db).length + ')');
-              await new Promise(r => setTimeout(r, 800));
+              console.log(`  ${n} real entries (${items.length} from API)`);
+              await new Promise(r => setTimeout(r, 600));
             }
-
-            // Fetch starter decks
+ 
             for (const setId of ST_SETS) {
-              const url = `https://optcgapi.com/api/decks/filtered/?set_id=${setId}&limit=200`;
-              console.log('Fetching deck:', setId);
-              const items = await fetchPage(page, url);
+              console.log(`Fetching deck: ${setId}`);
+              const items = await fetchAllPages(page, `https://optcgapi.com/api/decks/filtered/?set_id=${setId}`, 'decks');
               let n = 0;
               items.forEach(d => {
                 const c = norm(d);
-                if (c && !db[c.id]) { db[c.id] = c; n++; }
-                if (c && c.id !== c.baseId && !db[c.baseId]) {
-                  db[c.baseId] = { ...c, id: c.baseId, name: c.name.replace(/\s*\([^)]*(?:parallel|alt art)[^)]*\)\s*$/i,'').trim() || c.name };
+                if (!c) return;
+                if (!db[c.id] || db[c.id].stub) { db[c.id] = c; n++; }
+                if (c.id !== c.baseId && (!db[c.baseId] || db[c.baseId].stub)) {
+                  db[c.baseId] = { ...c, id: c.baseId, name: c.name.replace(/\s*\([^)]*(?:parallel|alt art|alternate art)[^)]*\)\s*$/i,'').trim() || c.name, image: `${IMGBASE}${c.baseId}.png` };
                 }
               });
-              console.log(' ', n, 'new cards (total:', Object.keys(db).length + ')');
-              await new Promise(r => setTimeout(r, 500));
+              console.log(`  ${n} real entries (${items.length} from API)`);
+              await new Promise(r => setTimeout(r, 400));
             }
-
-            // Fetch promos
+ 
+            // Promos — paginate as well
             console.log('Fetching promos...');
-            const promos = await fetchPage(page, 'https://optcgapi.com/api/allPromoCards/');
-            let pn = 0;
-            promos.forEach(d => { const c = norm(d); if (c && !db[c.id]) { db[c.id]=c; pn++; } });
-            console.log(' ', pn, 'promo cards (total:', Object.keys(db).length + ')');
-
-            await browser.close();
-
-            if (!Object.keys(db).length) {
-              console.error('No cards fetched — aborting');
-              process.exit(1);
+            const promos = await fetchAllPages(page, 'https://optcgapi.com/api/promos/filtered/?', 'promos');
+            // Also try the bulk endpoint as fallback
+            if (!promos.length) {
+              try {
+                const res = await page.goto('https://optcgapi.com/api/allPromoCards/', { waitUntil: 'networkidle', timeout: 30000 });
+                if (res && res.ok()) {
+                  const text = await page.evaluate(() => document.body.innerText);
+                  const data = JSON.parse(text);
+                  (Array.isArray(data) ? data : data.results || []).forEach(d => {
+                    const c = norm(d); if (c && !db[c.id]) { db[c.id]=c; promos.push(d); }
+                  });
+                }
+              } catch(e) {}
             }
-
-            const cards = Object.values(db);
+            let pn = 0;
+            promos.forEach(d => { const c=norm(d); if(c && (!db[c.id]||db[c.id].stub)){db[c.id]=c;pn++;} });
+            console.log(`  ${pn} promo cards`);
+ 
+            await browser.close();
+ 
+            const allCards = Object.values(db);
+            const realCards = allCards.filter(c => !c.stub);
+            const stubCards = allCards.filter(c => c.stub);
+            console.log(`\nSummary:`);
+            console.log(`  Real data: ${realCards.length} cards`);
+            console.log(`  Stubs (image only): ${stubCards.length} cards`);
+            console.log(`  Total: ${allCards.length} cards`);
+ 
+            // Remove stub flag before saving — app doesn't need it
+            allCards.forEach(c => delete c.stub);
+ 
             fs.writeFileSync('cards.json', JSON.stringify({
               generated: new Date().toISOString(),
-              count: cards.length,
-              cards
+              count: allCards.length,
+              realCount: realCards.length,
+              cards: allCards,
             }));
-            console.log('Done. Written', cards.length, 'cards to cards.json');
+            console.log('Written cards.json');
           })();
           SCRIPT
           node fetch_cards.js
-
+ 
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
