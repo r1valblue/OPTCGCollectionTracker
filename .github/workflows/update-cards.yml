@@ -42,6 +42,15 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4
 
+      - name: Debug - fetch Limitless
+        run: |
+          python -c "
+          import requests
+          r = requests.get('https://onepiece.limitlesstcg.com/cards', headers={'User-Agent': 'Mozilla/5.0'})
+          print('Status:', r.status_code)
+          print('First 2000 chars:')
+          print(r.text[:2000])
+          "
       - name: Run scraper (new-only, scheduled run)
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'new-only')
         run: python scrape.py --new-only --out cards.json
