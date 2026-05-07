@@ -1,146 +1,77 @@
-name: Update card database
+name: Update Card Database
 
 on:
+  # Run every Monday at 06:00 UTC (after Limitless updates for new sets)
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: "0 6 * * 1"
+
+  # Allow triggering manually from the GitHub Actions tab
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Scrape mode"
+        required: true
+        default: "new-only"
+        type: choice
+        options:
+          - new-only      # Only scrape sets not yet in cards.json (fast, default)
+          - full          # Re-scrape everything (use when parser was fixed)
+          - sets          # Specific sets only — fill in 'sets' below
+      sets:
+        description: "Space-separated set codes (only used when mode=sets, e.g. OP15 ST21)"
+        required: false
+        default: ""
 
 jobs:
   update-cards:
     runs-on: ubuntu-latest
+    timeout-minutes: 360   # 6 hours — enough for a full scrape of all sets
+
+    permissions:
+      contents: write      # needed to commit cards.json back to the repo
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
+          python-version: "3.12"
 
-      - name: Generate card database
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run scraper (new-only, scheduled run)
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'new-only')
+        run: python scrape.py --new-only --out cards.json
+
+      - name: Run scraper (full re-scrape)
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+        run: python scrape.py --out cards.json
+
+      - name: Run scraper (specific sets)
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'sets'
+        run: python scrape.py --sets ${{ inputs.sets }} --out cards.json
+
+      - name: Check for changes
+        id: diff
         run: |
-          cat << 'SCRIPT' > generate_cards.js
-          const fs = require('fs');
+          git diff --quiet cards.json && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
 
-          // Complete set definitions with card ranges.
-          // Add new sets here when they release — just update the range.
-          // Card images are served directly from Bandai's CDN at:
-          // https://en.onepiece-cardgame.com/images/cardlist/card/{ID}.png
-          // Alt arts use the suffix _p1, _p2 etc on the same base URL.
-
-          const SETS = [
-            // Main booster sets
-            { id:'OP01', name:'Romance Dawn',              cards:121, alts:[1,2,3,4,5,6,7,8,25,36,60,79,84,89,95,99,101,107,110,113,116,117,118,119,120,121] },
-            { id:'OP02', name:'Paramount War',             cards:127, alts:[1,2,3,4,5,117,118,119,120,121,122,123,124,125,126,127] },
-            { id:'OP03', name:'Pillars of Strength',       cards:125, alts:[1,2,3,4,5,119,120,121,122,123,124,125] },
-            { id:'OP04', name:'Kingdoms of Intrigue',      cards:128, alts:[1,2,3,4,5,122,123,124,125,126,127,128] },
-            { id:'OP05', name:'Awakening of the New Era',  cards:122, alts:[1,2,3,4,5,118,119,120,121,122] },
-            { id:'OP06', name:'Wings of the Captain',      cards:122, alts:[1,2,3,4,5,118,119,120,121,122] },
-            { id:'OP07', name:'500 Years in the Future',   cards:126, alts:[1,2,3,4,5,119,120,121,122,123,124,125,126] },
-            { id:'OP08', name:'Two Legends',               cards:126, alts:[1,2,3,4,5,119,120,121,122,123,124,125,126] },
-            { id:'OP09', name:'The Four Emperors',         cards:122, alts:[1,2,3,4,118,119,120,121,122] },
-            { id:'OP10', name:'Royal Blood',               cards:122, alts:[1,2,3,4,119,120,121,122] },
-            { id:'OP11', name:'A Fist of Divine Speed',    cards:120, alts:[1,2,3,4,118,119,120] },
-            { id:'OP12', name:'Legacy of the Master',      cards:120, alts:[1,2,3,4,118,119,120] },
-            { id:'OP13', name:"Carrying On His Will",      cards:122, alts:[1,2,3,4,118,119,120,121,122] },
-            { id:'OP14', name:"The Azure Sea's Seven",     cards:122, alts:[1,2,3,4,119,120,121,122] },
-            { id:'OP15', name:"Adventure on Kami's Island",cards:120, alts:[1,2,3,4,118,119,120] },
-            // Extra boosters
-            { id:'EB01', name:"Girl's Collection",         cards:60,  alts:[] },
-            { id:'EB02', name:'Anime 25th Collection',     cards:60,  alts:[] },
-            { id:'EB03', name:'One Piece Heroines',        cards:60,  alts:[] },
-            { id:'EB04', name:"The Azure Sea's Seven (Extra)", cards:60, alts:[] },
-            // Premium boosters
-            { id:'PRB01', name:'One Piece Card the Best',      cards:50, alts:[] },
-            { id:'PRB02', name:'One Piece Card the Best Vol.2',cards:50, alts:[] },
-            // Starter decks
-            { id:'ST01', name:'Straw Hat Crew',                cards:17, alts:[] },
-            { id:'ST02', name:'Worst Generation',              cards:17, alts:[] },
-            { id:'ST03', name:'The Seven Warlords of the Sea', cards:17, alts:[] },
-            { id:'ST04', name:'Animal Kingdom Pirates',        cards:17, alts:[] },
-            { id:'ST05', name:'One Piece Film Edition',        cards:17, alts:[] },
-            { id:'ST06', name:'Absolute Justice',              cards:17, alts:[] },
-            { id:'ST07', name:'Big Mom Pirates',               cards:17, alts:[] },
-            { id:'ST08', name:'Monkey D. Luffy',               cards:17, alts:[] },
-            { id:'ST09', name:'Yamato',                        cards:17, alts:[] },
-            { id:'ST10', name:'The Three Captains (Ultimate)', cards:17, alts:[] },
-            { id:'ST11', name:'Uta',                           cards:17, alts:[] },
-            { id:'ST12', name:'Zoro & Sanji',                  cards:17, alts:[] },
-            { id:'ST13', name:'The Three Brothers (Ultimate)', cards:17, alts:[] },
-            { id:'ST14', name:'3D2Y',                          cards:17, alts:[] },
-            { id:'ST15', name:'Red Edward Newgate',            cards:17, alts:[] },
-            { id:'ST16', name:'Green Uta',                     cards:17, alts:[] },
-            { id:'ST17', name:'Blue Donquixote Doflamingo',    cards:17, alts:[] },
-            { id:'ST18', name:'Purple Monkey D. Luffy',        cards:17, alts:[] },
-            { id:'ST19', name:'Black Smoker',                  cards:17, alts:[] },
-            { id:'ST20', name:'Yellow Charlotte Katakuri',     cards:17, alts:[] },
-            { id:'ST21', name:'Gear 5 (Ultimate EX)',          cards:17, alts:[] },
-          ];
-
-          // Known promo card range (Bandai publishes these sequentially)
-          const PROMO_MAX = 150; // update when more promos are confirmed
-
-          const IMGBASE = 'https://en.onepiece-cardgame.com/images/cardlist/card/';
-          const pad = n => String(n).padStart(3,'0');
-
-          const cards = [];
-
-          for (const set of SETS) {
-            for (let n = 1; n <= set.cards; n++) {
-              const id = `${set.id}-${pad(n)}`;
-              // Base card
-              cards.push({
-                id,
-                baseId: id,
-                set: set.id,
-                setName: set.name,
-                image: `${IMGBASE}${id}.png`,
-              });
-              // Alt art / parallel — always _p1, some cards also have _p2
-              if (set.alts.includes(n)) {
-                const altId = `${id}_p1`;
-                cards.push({
-                  id: altId,
-                  baseId: id,
-                  set: set.id,
-                  setName: set.name,
-                  variant: 'Alt Art',
-                  image: `${IMGBASE}${altId}.png`,
-                });
-              }
-            }
-          }
-
-          // Promos
-          for (let n = 1; n <= PROMO_MAX; n++) {
-            const id = `P-${pad(n)}`;
-            cards.push({
-              id,
-              baseId: id,
-              set: 'P',
-              setName: 'Promotional Cards',
-              image: `${IMGBASE}${id}.png`,
-            });
-          }
-
-          const output = {
-            generated: new Date().toISOString(),
-            count: cards.length,
-            cards,
-          };
-
-          fs.writeFileSync('cards.json', JSON.stringify(output));
-          console.log(`Generated ${cards.length} cards across ${SETS.length} sets + promos`);
-          SCRIPT
-          node generate_cards.js
-
-      - name: Commit if changed
+      - name: Commit and push updated cards.json
+        if: steps.diff.outputs.changed == 'true'
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet cards.json; then
-            echo "No changes to cards.json"
-          else
-            COUNT=$(node -e "console.log(require('./cards.json').count)")
-            git add cards.json
-            git commit -m "chore: update card database (${COUNT} cards) [skip ci]"
-            git push
-          fi
+
+          # Count how many cards are now in the file
+          CARD_COUNT=$(python -c "import json; data=json.load(open('cards.json')); print(len(data))")
+
+          git add cards.json
+          git commit -m "chore: update cards.json — ${CARD_COUNT} cards [skip ci]"
+          git push
+
+      - name: No changes detected
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "cards.json is already up to date — nothing to commit."
