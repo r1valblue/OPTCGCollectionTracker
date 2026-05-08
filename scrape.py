@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-“””
-scrape.py — One Piece TCG card database builder
-Uses Playwright (headless Chromium) to scrape onepiece.limitlesstcg.com
-“””
 
 import argparse
 import json
